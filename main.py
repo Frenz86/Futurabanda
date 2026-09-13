@@ -1,5 +1,5 @@
 import difflib
-import json
+import io
 import os
 import random
 import string
@@ -8,7 +8,7 @@ import unicodedata
 
 import pygame
 import speech_recognition as sr
-import vosk
+from faster_whisper import WhisperModel
 from pgzero.loaders import root as ASSET_ROOT
 
 WIDTH = 1280
@@ -20,11 +20,18 @@ TITLE = "Futura-Banda"
 # root instead of os.path.dirname(__file__).
 MUSIC_DIR = os.path.join(ASSET_ROOT, "music")
 GIOCATORI_DIR = os.path.join(ASSET_ROOT, "giocatori")
-VOSK_MODEL_DIR = os.path.join(ASSET_ROOT, "vosk-model-it")
 
-VOSK_SAMPLE_RATE = 16000
-vosk.SetLogLevel(-1)  # silenzia i log interni di Kaldi/Vosk sulla console
-_modello_vosk = vosk.Model(VOSK_MODEL_DIR) if os.path.isdir(VOSK_MODEL_DIR) else None
+# "small" e' il miglior compromesso qualita'/velocita' su CPU per l'italiano;
+# al primo avvio faster-whisper scarica il modello da Hugging Face e lo mette
+# in cache (~/.cache/huggingface), poi funziona offline.
+WHISPER_MODEL_SIZE = "small"
+try:
+    _modello_whisper = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+except Exception as errore:
+    # Niente internet al primo avvio, modello non scaricabile, ecc.: il gioco
+    # deve restare giocabile anche senza riconoscimento vocale.
+    print(f"Modello Whisper non disponibile, riconoscimento vocale disattivato: {errore}")
+    _modello_whisper = None
 
 NUM_DOMANDE = 7
 Y_CASELLE = [512 - 58 * i for i in range(NUM_DOMANDE)]
@@ -272,21 +279,22 @@ def ascolta_risposta(mio_id):
     global risultato_ascolto
     risposta = ""
     try:
-        if _modello_vosk is not None:
+        if _modello_whisper is not None:
             recognizer = sr.Recognizer()
             with sr.Microphone() as source:
                 recognizer.adjust_for_ambient_noise(source, duration=0.6)
                 audio = recognizer.listen(source, timeout=6, phrase_time_limit=8)
-            dati_grezzi = audio.get_raw_data(convert_rate=VOSK_SAMPLE_RATE, convert_width=2)
-            kaldi = vosk.KaldiRecognizer(_modello_vosk, VOSK_SAMPLE_RATE)
-            kaldi.AcceptWaveform(dati_grezzi)
-            risposta = json.loads(kaldi.FinalResult()).get("text", "")
+            wav_bytes = io.BytesIO(audio.get_wav_data())
+            segmenti, _info = _modello_whisper.transcribe(
+                wav_bytes, language="it", beam_size=1, vad_filter=True
+            )
+            risposta = " ".join(segmento.text.strip() for segmento in segmenti).strip()
     except sr.WaitTimeoutError:
         pass
     except Exception as errore:
         # Un thread in background che si blocca su un'eccezione non gestita
         # lascerebbe il gioco bloccato per sempre in attesa di una risposta
-        # che non arrivera' mai: qualunque problema (microfono, audio, vosk)
+        # che non arrivera' mai: qualunque problema (microfono, audio, whisper)
         # deve degradare a "non ho capito" invece di bloccare il turno.
         print(f"Riconoscimento vocale fallito: {errore}")
     with lock:

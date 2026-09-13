@@ -2,8 +2,9 @@ pgzero==1.2.1
 pygame==2.6.1
 SpeechRecognition==3.17.0
 PyAudio==0.2.14
-vosk==0.3.45
+faster-whisper==1.1.0
 
-# Serve anche il modello vocale italiano di Vosk nella cartella vosk-model-it/
-# (non installabile via pip): scaricabile da
-# https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip
+# Al primo avvio faster-whisper scarica da solo il modello "small" (italiano
+# incluso, multilingua) da Hugging Face e lo mette in cache in
+# ~/.cache/huggingface; da li' in poi funziona offline. Nessun download
+# manuale richiesto (a differenza del vecchio modello Vosk).
