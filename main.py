@@ -222,14 +222,23 @@ def avvia_partita():
     nuova_partita()
 
 
+def tempo_impiegato(giocatore):
+    return TEMPO_LIMITE - giocatore.tempo_rimanente
+
+
+def classifica():
+    """Ordina i giocatori per numero di canzoni indovinate (piu' e' meglio) e,
+    a parita', per tempo impiegato (meno e' meglio)."""
+    return sorted(giocatori, key=lambda g: (-g.corrette, tempo_impiegato(g)))
+
+
 def vincitore():
-    """Restituisce il Giocatore vincitore, o None in caso di pareggio."""
-    g1, g2 = giocatori
-    if g1.corrette > g2.corrette:
-        return g1
-    if g2.corrette > g1.corrette:
-        return g2
-    return None
+    """Restituisce il Giocatore vincitore, o None in caso di pareggio (stesse
+    canzoni indovinate nello stesso tempo)."""
+    primo, secondo = classifica()
+    if primo.corrette == secondo.corrette and tempo_impiegato(primo) == tempo_impiegato(secondo):
+        return None
+    return primo
 
 
 def messaggio_finale():
@@ -485,8 +494,23 @@ def disegna_fine():
     )
 
     screen.draw.text(
+        "CLASSIFICA", center=(WIDTH // 2, 605), fontsize=24,
+        color="gold", owidth=1, ocolor="black",
+    )
+    for posizione, giocatore in enumerate(classifica(), start=1):
+        riga = (
+            f"{posizione}. {giocatore.nome} - {giocatore.corrette} indovinate "
+            f"in {tempo_impiegato(giocatore):.1f}s"
+        )
+        screen.draw.text(
+            riga, center=(WIDTH // 2, 605 + posizione * 26), fontsize=22,
+            color="white", owidth=1, ocolor="black",
+        )
+
+    screen.draw.text(
         "Clicca per tornare alla schermata iniziale",
-        center=(WIDTH // 2, 645), fontsize=26, color="white", owidth=1, ocolor="black",
+        center=(WIDTH // 2, 605 + (len(giocatori) + 1) * 26 + 20), fontsize=26,
+        color="white", owidth=1, ocolor="black",
     )
 
 
