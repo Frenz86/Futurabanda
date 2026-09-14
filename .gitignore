@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+
+# Statistiche di gioco generate a runtime, non fanno parte del codice sorgente
+classifica.json

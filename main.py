@@ -1,5 +1,6 @@
 import difflib
 import io
+import json
 import os
 import random
 import string
@@ -248,6 +249,62 @@ def messaggio_finale():
     return f"{esito} ({g1.corrette}-{g2.corrette})"
 
 
+# Classifica generale: persistita su file cosi' sopravvive al riavvio del
+# gioco, aggregando i risultati di tutte le partite giocate finora.
+FILE_CLASSIFICA = os.path.join(ASSET_ROOT, "classifica.json")
+
+
+def carica_classifica_generale():
+    try:
+        with open(FILE_CLASSIFICA, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def salva_classifica_generale(dati):
+    try:
+        with open(FILE_CLASSIFICA, "w", encoding="utf-8") as f:
+            json.dump(dati, f, ensure_ascii=False, indent=2)
+    except OSError as errore:
+        # Se il file non e' scrivibile la partita non deve bloccarsi: si perde
+        # solo la registrazione della classifica generale di questa partita.
+        print(f"Impossibile salvare la classifica generale: {errore}")
+
+
+def registra_risultato_partita():
+    """Aggiorna, a fine partita, le statistiche cumulative di ciascun
+    giocatore (per nome) nel file della classifica generale."""
+    dati = carica_classifica_generale()
+    vinc = vincitore()
+    for giocatore in giocatori:
+        voce = dati.setdefault(
+            giocatore.nome,
+            {"partite": 0, "vittorie": 0, "canzoni_indovinate": 0, "tempo_totale": 0.0},
+        )
+        voce["partite"] += 1
+        if vinc is giocatore:
+            voce["vittorie"] += 1
+        voce["canzoni_indovinate"] += giocatore.corrette
+        voce["tempo_totale"] += round(tempo_impiegato(giocatore), 1)
+    salva_classifica_generale(dati)
+
+
+def classifica_generale_ordinata():
+    """Ordina la classifica generale per vittorie, poi canzoni indovinate
+    totali, poi tempo medio impiegato per partita (meno e' meglio)."""
+    dati = carica_classifica_generale()
+
+    def tempo_medio(voce):
+        return voce["tempo_totale"] / voce["partite"] if voce["partite"] else 0.0
+
+    ordinata = sorted(
+        dati.items(),
+        key=lambda coppia: (-coppia[1]["vittorie"], -coppia[1]["canzoni_indovinate"], tempo_medio(coppia[1])),
+    )
+    return [(nome, voce, tempo_medio(voce)) for nome, voce in ordinata]
+
+
 def prossimo_turno():
     # Come agli scacchi: una canzone a turno, si alterna sempre all'altro
     # giocatore (se puo' ancora giocare). Il minuto di ciascuno resta pero'
@@ -269,6 +326,7 @@ def avanza_turno(messaggio):
         music.stop()
         stato = FINE
         testo = f"{messaggio} - {messaggio_finale()}"
+        registra_risultato_partita()
     elif prossimo == turno_corrente:
         stato = ATTESA
         prossimo_g = giocatori[turno_corrente]
@@ -494,22 +552,25 @@ def disegna_fine():
     )
 
     screen.draw.text(
-        "CLASSIFICA", center=(WIDTH // 2, 605), fontsize=24,
+        "CLASSIFICA GENERALE", center=(WIDTH // 2, 600), fontsize=24,
         color="gold", owidth=1, ocolor="black",
     )
-    for posizione, giocatore in enumerate(classifica(), start=1):
+    MAX_RIGHE_CLASSIFICA = 5
+    righe_classifica = classifica_generale_ordinata()[:MAX_RIGHE_CLASSIFICA]
+    for posizione, (nome, voce, tempo_medio) in enumerate(righe_classifica, start=1):
         riga = (
-            f"{posizione}. {giocatore.nome} - {giocatore.corrette} indovinate "
-            f"in {tempo_impiegato(giocatore):.1f}s"
+            f"{posizione}. {nome} - {voce['vittorie']} vittorie, "
+            f"{voce['canzoni_indovinate']} indovinate su {voce['partite']} partite "
+            f"(media {tempo_medio:.1f}s)"
         )
         screen.draw.text(
-            riga, center=(WIDTH // 2, 605 + posizione * 26), fontsize=22,
+            riga, center=(WIDTH // 2, 600 + posizione * 24), fontsize=20,
             color="white", owidth=1, ocolor="black",
         )
 
     screen.draw.text(
         "Clicca per tornare alla schermata iniziale",
-        center=(WIDTH // 2, 605 + (len(giocatori) + 1) * 26 + 20), fontsize=26,
+        center=(WIDTH // 2, 600 + (len(righe_classifica) + 1) * 24 + 20), fontsize=26,
         color="white", owidth=1, ocolor="black",
     )
 
